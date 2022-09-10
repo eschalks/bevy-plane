@@ -1,7 +1,5 @@
 mod rocks;
 
-use std::time::Duration;
-
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use ncollide2d::na::Vector2;
@@ -35,8 +33,8 @@ struct HorizontalVelocity(f32);
 
 const WIDTH: f32 = 800.0;
 const HEIGHT: f32 = 480.0;
-const GRAVITY: f32 = 150.0;
-const BUMP: f32 = GRAVITY * 1.1;
+const GRAVITY: f32 = 250.0;
+const BUMP: f32 = GRAVITY * 0.82;
 const PLAYER_WIDTH: f32 = 88.0;
 const PLAYER_HEIGHT: f32 = 73.0;
 
@@ -98,7 +96,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         &mut commands,
         asset_server.load("groundDirt.png"),
         -132.0,
-        HEIGHT / 2.0 - GROUND_HEIGHT / 2.0,
+        HEIGHT / 2.0 - GROUND_HEIGHT / 2.0 + 1.0,
         3.0,
         GROUND_WIDTH,
         300.0,
@@ -197,7 +195,7 @@ fn player_system(
 
 fn reset_game(mut commands: Commands, mut rock_timer: ResMut<RockTimer>, mut players: Query<(&mut Transform, &mut Player)>, rocks: Query<Entity, With<Rock>>) {
     rock_timer.0.reset();
-    
+
     for (mut transform, mut player) in players.iter_mut() {
         transform.translation.y = 0.0;
         player.velocity = BUMP;

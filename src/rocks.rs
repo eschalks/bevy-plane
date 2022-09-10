@@ -2,11 +2,13 @@ use crate::{GameState, HorizontalVelocity, Player, PlayerShape, WIDTH, HEIGHT};
 use bevy::ecs::system::EntityCommands;
 use bevy::prelude::*;
 use bevy::utils::Duration;
+#[cfg(debug_assertions)]
 use bevy_prototype_lyon::prelude::*;
 use ncollide2d::na;
 use ncollide2d::na::{Isometry2, Point2, Vector2};
 use ncollide2d::query::{self, Proximity};
 use ncollide2d::shape::{ConvexPolygon};
+use rand::prelude::*;
 
 const ROCK_WIDTH: f32 = 108.0;
 const ROCK_HEIGHT: f32 = 239.0;
@@ -16,6 +18,12 @@ const ROCK_UP_POINTS: &'static [(f32, f32)] = &[
     (-ROCK_WIDTH / 2.0 + 6.0, -ROCK_HEIGHT / 2.0),
     (ROCK_WIDTH / 2.0 - 6.0, -ROCK_HEIGHT / 2.0),
     (12.0, ROCK_HEIGHT / 2.0),
+];
+
+const ROCK_DOWN_POINTS: &'static [(f32, f32)] = &[
+    (12.0, -ROCK_HEIGHT / 2.0),
+    (-ROCK_WIDTH / 2.0 + 6.0, ROCK_HEIGHT / 2.0),
+    (ROCK_WIDTH / 2.0 - 6.0, ROCK_HEIGHT / 2.0),
 ];
 
 pub struct RockTimer(pub Timer);
@@ -137,46 +145,75 @@ pub fn rock_system(mut commands: Commands, query: Query<(&Transform, Entity), Wi
 
 pub fn rock_spawn_system(mut commands: Commands, mut timer: ResMut<RockTimer>, time: Res<Time>, asset_server: Res<AssetServer>) {
     if timer.0.tick(time.delta()).finished() {
-        spawn_rock(&mut commands, asset_server);
-        timer.0.set_duration(Duration::from_secs_f32(1.0)); 
+        let mut rng = thread_rng();
+        let scale = rng.gen_range(0.7..1.2);
+        let rock_type = rng.gen_range(0..=2);
+        spawn_rocks(&mut commands, asset_server, scale, rock_type);
+        let next_time: f32 = rng.gen_range(0.4..1.5);
+        timer.0.set_duration(Duration::from_secs_f32(next_time)); 
         timer.0.reset();
     }
 }
 
-fn spawn_rock(commands: &mut Commands, asset_server: Res<AssetServer>) {
-    let mut entity = commands.spawn_bundle(SpriteBundle {
-        transform: Transform::from_xyz(WIDTH / 2.0 + 60.0, HEIGHT / -2.0 + ROCK_HEIGHT / 2.0, 1.0),
-        texture: asset_server.load("rock.png"),
-        ..default()
-    });
+fn spawn_rocks(commands: &mut Commands, asset_server: Res<AssetServer>, scale: f32, rock_type: u8) {
+    let mut rock_descriptions: Vec<(f32, &str, Vec<(f32, f32)>)> = vec![];
 
-    entity.insert(HorizontalVelocity(250.0)).insert(Rock);
+    let scale = if rock_type == 2 {
+        scale * 0.7
+    }  else {
+        scale
+    };
 
-    add_collision_polygon(&mut entity, ROCK_UP_POINTS.to_vec());
+    if rock_type != 0 {
+        rock_descriptions.push((HEIGHT / -2.0 + (ROCK_HEIGHT * scale) / 2.0, "rockGrass.png", ROCK_UP_POINTS.to_vec()));
+    }
+
+    if rock_type != 1 {
+        rock_descriptions.push((HEIGHT / 2.0 - (ROCK_HEIGHT * scale) / 2.0, "rockDown.png", ROCK_DOWN_POINTS.to_vec()));
+    }
+
+    for (y, texture, points) in rock_descriptions.iter() {
+        let mut entity = commands.spawn_bundle(SpriteBundle {
+            transform: Transform::from_xyz(WIDTH / 2.0 + 60.0, *y, 1.0).with_scale(Vec3::new(1.0, scale, 1.0)),
+            texture: asset_server.load(*texture),
+            ..default()
+        });
+    
+    
+        add_collision_polygon(&mut entity, points, scale);
+
+        entity.insert(HorizontalVelocity(250.0)).insert(Rock);
+    }
+
 }
 
-fn add_collision_polygon(entity: &mut EntityCommands, coords: Vec<(f32, f32)>) {
-    let fill_color = Color::rgba(0.2, 0.2, 0.8, 0.6);
+fn add_collision_polygon(entity: &mut EntityCommands, coords: &Vec<(f32, f32)>, scale: f32) {
+    let coords: Vec<(f32, f32)> = coords.iter().map(|(x, y)| (*x, y * scale)).collect();
 
     let points = coords.iter().map(to_point2).collect();
     let polygon = ConvexPolygon::try_new(points).unwrap();
     entity.insert(CollisionPolygon { polygon });
 
-    let vecs: Vec<Vec2> = coords.iter().map(to_vec2).collect();
+    // During debugging it's sometimes useful to be able to see the collision outline
+    #[cfg(debug_assertions)]
+    {
+        let fill_color = Color::rgba(0.2, 0.2, 0.8, 0.6);
 
-    let polygon = shapes::Polygon {
-        points: vecs,
-        closed: true,
-    };
-
-    let child = entity
-        .commands()
-        .spawn_bundle(GeometryBuilder::build_as(
-            &polygon,
-            DrawMode::Fill(FillMode::color(fill_color)),
-            Transform::from_xyz(0.0, 0.0, 2.0),
-        ))
-        .id();
-
-    entity.push_children(&[child]);
+        let vecs: Vec<Vec2> = coords.iter().map(to_vec2).collect();
+        let polygon = shapes::Polygon {
+            points: vecs,
+            closed: true,
+        };
+    
+        let child = entity
+            .commands()
+            .spawn_bundle(GeometryBuilder::build_as(
+                &polygon,
+                DrawMode::Fill(FillMode::color(fill_color)),
+                Transform::from_xyz(0.0, 0.0, 2.0).with_scale(Vec3::new(1.0, 1.0 / scale, 1.0)),
+            ))
+            .id();
+    
+        entity.push_children(&[child]);
+    }
 }
