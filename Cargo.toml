@@ -1,0 +1,20 @@
+[package]
+name = "bevy-plane"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# Remove "dynamic" upon release
+bevy = { version = "0.8.1", features = ["dynamic"]}
+ncollide2d = "0.33" # For 2D collision detection.
+bevy_prototype_lyon = "0.6.0"
+
+# Enable a small amount of optimization in debug mode
+[profile.dev]
+opt-level = 1
+
+# Enable high optimizations for dependencies (incl. Bevy), but not for our code:
+[profile.dev.package."*"]
+opt-level = 3
