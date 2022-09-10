@@ -1,10 +1,12 @@
-use bevy::diagnostic::{LogDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, EntityCountDiagnosticsPlugin};
-use bevy::ecs::system::EntityCommands;
+mod rocks;
+
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
-use ncollide2d::na::{Point2, Vector2};
-use ncollide2d::shape::{ConvexPolygon, Cuboid, Polyline};
-use std::process::Command;
+use ncollide2d::na::Vector2;
+use ncollide2d::shape::Cuboid;
+use rocks::*;
+
+pub type PlayerShape = Cuboid<f32>;
 
 #[derive(Component, Debug)]
 struct Background {
@@ -12,26 +14,18 @@ struct Background {
 }
 
 #[derive(Component)]
-struct Player {
+pub struct Player {
     velocity: f32,
+    shape: PlayerShape,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-enum GameState {
+pub enum GameState {
     Start,
     Playing,
     Paused,
-    Score,
+    GameOver,
 }
-
-#[derive(Component)]
-struct CollisionPolygon {
-    points: Vec<Point2<f32>>,
-}
-
-#[derive(Component)]
-struct Rock;
-
 struct GameSpeed(f32);
 
 #[derive(Component)]
@@ -46,14 +40,6 @@ const PLAYER_HEIGHT: f32 = 73.0;
 
 const GROUND_WIDTH: f32 = 808.0;
 const GROUND_HEIGHT: f32 = 73.0;
-const ROCK_MIN_X: f32 = -WIDTH / 2.0 - 200.0;
-
-const ROCK_UP_POINTS: &'static [(f32, f32)] = &[
-    (-52.0, -119.5),
-    (52.0, -119.5),
-    (12.0, 119.5),
-    (-52.0, -119.5),
-];
 
 fn main() {
     App::new()
@@ -65,9 +51,6 @@ fn main() {
         .insert_resource(GameSpeed(1.0))
         .add_plugins(DefaultPlugins)
         .add_plugin(ShapePlugin)
-        .add_plugin(LogDiagnosticsPlugin::default())
-        .add_plugin(FrameTimeDiagnosticsPlugin::default())
-        .add_plugin(EntityCountDiagnosticsPlugin::default())
         .add_state(GameState::Start)
         .add_startup_system(setup)
         .add_system_set(SystemSet::on_update(GameState::Start).with_system(wait_for_click))
@@ -76,18 +59,47 @@ fn main() {
                 .with_system(loop_background)
                 .with_system(horizontal_movement)
                 .with_system(player_system)
-                .with_system(rock_system),
+                .with_system(rock_system)
+                .with_system(collision_system),
         )
+        .add_system_set(SystemSet::on_update(GameState::GameOver).with_system(wait_for_click))
+        .add_system_set(SystemSet::on_exit(GameState::GameOver).with_system(reset_game))
         .run()
 }
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn_bundle(Camera2dBundle::default());
 
-    spawn_background(&mut commands, asset_server.load("background.png"), 0.0, 0.0, 0.0, WIDTH, 150.0, false);
-    spawn_background(&mut commands, asset_server.load("groundGrass.png"), 0.0, -HEIGHT / 2.0 + GROUND_HEIGHT / 2.0, 3.0, GROUND_WIDTH, 300.0, false);
-    spawn_background(&mut commands, asset_server.load("groundDirt.png"), -132.0, HEIGHT / 2.0 - GROUND_HEIGHT / 2.0, 3.0, GROUND_WIDTH, 300.0, true);
-
+    spawn_background(
+        &mut commands,
+        asset_server.load("background.png"),
+        0.0,
+        0.0,
+        0.0,
+        WIDTH,
+        150.0,
+        false,
+    );
+    spawn_background(
+        &mut commands,
+        asset_server.load("groundGrass.png"),
+        0.0,
+        -HEIGHT / 2.0 + GROUND_HEIGHT / 2.0,
+        3.0,
+        GROUND_WIDTH,
+        300.0,
+        false,
+    );
+    spawn_background(
+        &mut commands,
+        asset_server.load("groundDirt.png"),
+        -132.0,
+        HEIGHT / 2.0 - GROUND_HEIGHT / 2.0,
+        3.0,
+        GROUND_WIDTH,
+        300.0,
+        true,
+    );
 
     commands
         .spawn_bundle(SpriteBundle {
@@ -95,7 +107,10 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             transform: Transform::from_xyz(-200.0, 0.0, 1.0).with_scale(Vec3::new(0.5, 0.5, 1.0)),
             ..default()
         })
-        .insert(Player { velocity: BUMP });
+        .insert(Player {
+            velocity: BUMP,
+            shape: Cuboid::new(Vector2::new(PLAYER_WIDTH / 4.0, PLAYER_HEIGHT / 4.0)),
+        });
 
     spawn_rock(&mut commands, asset_server);
 }
@@ -106,13 +121,22 @@ fn wait_for_click(buttons: Res<Input<MouseButton>>, mut state: ResMut<State<Game
     }
 }
 
-fn spawn_background(commands: &mut Commands, texture: Handle<Image>, x: f32, y: f32, z: f32, width: f32, velocity: f32, flip_y: bool) {
+fn spawn_background(
+    commands: &mut Commands,
+    texture: Handle<Image>,
+    x: f32,
+    y: f32,
+    z: f32,
+    width: f32,
+    velocity: f32,
+    flip_y: bool,
+) {
     for i in 0..2 {
         commands
             .spawn_bundle(SpriteBundle {
-                sprite: Sprite { 
+                sprite: Sprite {
                     flip_y,
-                    ..default() 
+                    ..default()
                 },
                 texture: texture.clone(),
                 transform: Transform::from_xyz(i as f32 * width + x, y, z),
@@ -169,48 +193,4 @@ fn player_system(
     }
 }
 
-fn rock_system(mut commands: Commands, mut query: Query<(&Transform, Entity), With<Rock>>) {
-    for (transform, entity) in query.iter() {
-        if transform.translation.x < ROCK_MIN_X {
-            commands.entity(entity).despawn_recursive();
-            println!("Despawn!");
-        }
-    }
-}
-
-fn spawn_rock(commands: &mut Commands, asset_server: Res<AssetServer>) {
-    let mut entity = commands.spawn_bundle(SpriteBundle {
-        transform: Transform::from_xyz(WIDTH / 2.0 + 60.0, 0.0, 2.0),
-        texture: asset_server.load("rock.png"),
-        ..default()
-    });
-
-    entity.insert(HorizontalVelocity(250.0)).insert(Rock);
-
-    add_collision_polygon(&mut entity, ROCK_UP_POINTS.to_vec());
-}
-
-fn add_collision_polygon(entity: &mut EntityCommands, coords: Vec<(f32, f32)>) {
-    let vecs: Vec<Vec2> = coords.iter().map(|(x, y)| Vec2::new(*x, *y)).collect();
-
-    let polygon = shapes::Polygon {
-        points: vecs,
-        closed: false,
-    };
-
-    let fill_color = Color::rgba(0.2, 0.2, 0.8, 0.6);
-
-    let points = coords.iter().map(|(x, y)| Point2::new(*x, *y)).collect();
-    entity.insert(CollisionPolygon { points });
-
-    let child = entity
-        .commands()
-        .spawn_bundle(GeometryBuilder::build_as(
-            &polygon,
-            DrawMode::Fill(FillMode::color(fill_color)),
-            Transform::from_xyz(0.0, 0.0, 2.0),
-        ))
-        .id();
-
-    entity.push_children(&[child]);
-}
+fn reset_game() {}
