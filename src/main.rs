@@ -1,5 +1,7 @@
 mod rocks;
 
+use std::time::Duration;
+
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use ncollide2d::na::Vector2;
@@ -49,6 +51,7 @@ fn main() {
             ..default()
         })
         .insert_resource(GameSpeed(1.0))
+        .insert_resource(RockTimer(Timer::from_seconds(0.0, false)))
         .add_plugins(DefaultPlugins)
         .add_plugin(ShapePlugin)
         .add_state(GameState::Start)
@@ -56,6 +59,7 @@ fn main() {
         .add_system_set(SystemSet::on_update(GameState::Start).with_system(wait_for_click))
         .add_system_set(
             SystemSet::on_update(GameState::Playing)
+            .with_system(rock_spawn_system)
                 .with_system(loop_background)
                 .with_system(horizontal_movement)
                 .with_system(player_system)
@@ -84,7 +88,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         &mut commands,
         asset_server.load("groundGrass.png"),
         0.0,
-        -HEIGHT / 2.0 + GROUND_HEIGHT / 2.0,
+        -HEIGHT / 2.0 + GROUND_HEIGHT / 2.0 - 1.0,
         3.0,
         GROUND_WIDTH,
         300.0,
@@ -111,8 +115,6 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             velocity: BUMP,
             shape: Cuboid::new(Vector2::new(PLAYER_WIDTH / 4.0, PLAYER_HEIGHT / 4.0)),
         });
-
-    spawn_rock(&mut commands, asset_server);
 }
 
 fn wait_for_click(buttons: Res<Input<MouseButton>>, mut state: ResMut<State<GameState>>) {
@@ -193,4 +195,15 @@ fn player_system(
     }
 }
 
-fn reset_game() {}
+fn reset_game(mut commands: Commands, mut rock_timer: ResMut<RockTimer>, mut players: Query<(&mut Transform, &mut Player)>, rocks: Query<Entity, With<Rock>>) {
+    rock_timer.0.reset();
+    
+    for (mut transform, mut player) in players.iter_mut() {
+        transform.translation.y = 0.0;
+        player.velocity = BUMP;
+    }
+
+    for rock in rocks.iter() {
+        commands.entity(rock).despawn_recursive();
+    }
+}

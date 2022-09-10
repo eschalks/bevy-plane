@@ -1,6 +1,7 @@
-use crate::{GameState, HorizontalVelocity, Player, PlayerShape, WIDTH};
+use crate::{GameState, HorizontalVelocity, Player, PlayerShape, WIDTH, HEIGHT};
 use bevy::ecs::system::EntityCommands;
 use bevy::prelude::*;
+use bevy::utils::Duration;
 use bevy_prototype_lyon::prelude::*;
 use ncollide2d::na;
 use ncollide2d::na::{Isometry2, Point2, Vector2};
@@ -16,6 +17,8 @@ const ROCK_UP_POINTS: &'static [(f32, f32)] = &[
     (ROCK_WIDTH / 2.0 - 6.0, -ROCK_HEIGHT / 2.0),
     (12.0, ROCK_HEIGHT / 2.0),
 ];
+
+pub struct RockTimer(pub Timer);
 
 #[derive(Component)]
 pub struct CollisionPolygon {
@@ -92,6 +95,7 @@ pub fn collision_system(
                 rock_polygon,
             ) {
                 state.set(GameState::GameOver).unwrap();
+                return;
             }
         }
     }
@@ -131,9 +135,17 @@ pub fn rock_system(mut commands: Commands, query: Query<(&Transform, Entity), Wi
     }
 }
 
-pub fn spawn_rock(commands: &mut Commands, asset_server: Res<AssetServer>) {
+pub fn rock_spawn_system(mut commands: Commands, mut timer: ResMut<RockTimer>, time: Res<Time>, asset_server: Res<AssetServer>) {
+    if timer.0.tick(time.delta()).finished() {
+        spawn_rock(&mut commands, asset_server);
+        timer.0.set_duration(Duration::from_secs_f32(1.0)); 
+        timer.0.reset();
+    }
+}
+
+fn spawn_rock(commands: &mut Commands, asset_server: Res<AssetServer>) {
     let mut entity = commands.spawn_bundle(SpriteBundle {
-        transform: Transform::from_xyz(WIDTH / 2.0 + 60.0, 0.0, 1.0),
+        transform: Transform::from_xyz(WIDTH / 2.0 + 60.0, HEIGHT / -2.0 + ROCK_HEIGHT / 2.0, 1.0),
         texture: asset_server.load("rock.png"),
         ..default()
     });
