@@ -75,6 +75,7 @@ fn main() {
                 .with_system(rock_system)
                 .with_system(collision_system),
         )
+        .add_system_set(SystemSet::on_enter(GameState::GameOver).with_system(setup_game_over))
         .add_system_set(SystemSet::on_update(GameState::GameOver).with_system(wait_for_click))
         .add_system_set(SystemSet::on_exit(GameState::GameOver).with_system(reset_game).with_system(state_cleanup_system))
         .run()
@@ -128,6 +129,12 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
 fn setup_start(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn_bundle(SpriteBundle {
+        texture: asset_server.load("UI/textGetReady.png"),
+        transform: Transform::from_xyz(0.0, 100.0, 5.0),
+        ..default()
+    }).insert(RemoveAfterState);
+
+    commands.spawn_bundle(SpriteBundle {
         texture: asset_server.load("UI/tapLeft.png"),
         transform: Transform::from_xyz(-200.0 + PLAYER_WIDTH / 1.5, 0.0, 1.0).with_scale(Vec3::new(0.5, 0.5, 1.0)),
         ..default()
@@ -139,6 +146,14 @@ fn setup_start(mut commands: Commands, asset_server: Res<AssetServer>) {
         ..default()
     }).insert(RemoveAfterState);
 } 
+
+fn setup_game_over(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn_bundle(SpriteBundle {
+        texture: asset_server.load("UI/textGameOver.png"),
+        transform: Transform::from_xyz(0.0, 100.0, 5.0),
+        ..default()
+    }).insert(RemoveAfterState);
+}
 
 fn wait_for_click(mut buttons: ResMut<Input<MouseButton>>, mut state: ResMut<State<GameState>>) {
     if buttons.just_pressed(MouseButton::Left) {
