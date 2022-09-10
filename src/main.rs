@@ -1,5 +1,7 @@
 mod rocks;
 
+use std::f32::consts::PI;
+
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use ncollide2d::na::Vector2;
@@ -29,17 +31,23 @@ pub enum GameState {
 struct GameSpeed(f32);
 
 #[derive(Component)]
+struct RemoveAfterState;
+
+#[derive(Component)]
 struct HorizontalVelocity(f32);
 
 const WIDTH: f32 = 800.0;
 const HEIGHT: f32 = 480.0;
-const GRAVITY: f32 = 250.0;
-const BUMP: f32 = GRAVITY * 0.82;
+const GRAVITY: f32 = 450.0;
+const BUMP: f32 = GRAVITY * 0.65;
 const PLAYER_WIDTH: f32 = 88.0;
 const PLAYER_HEIGHT: f32 = 73.0;
 
 const GROUND_WIDTH: f32 = 808.0;
 const GROUND_HEIGHT: f32 = 73.0;
+
+// At this velocity, the player is facing downwards
+const FREE_FALL_VELOCITY: f32 = BUMP - GRAVITY * 1.6;
 
 fn main() {
     App::new()
@@ -54,7 +62,10 @@ fn main() {
         .add_plugin(ShapePlugin)
         .add_state(GameState::Start)
         .add_startup_system(setup)
+        .add_system_set(SystemSet::on_enter(GameState::Start).with_system(setup_start))
         .add_system_set(SystemSet::on_update(GameState::Start).with_system(wait_for_click))
+        .add_system_set(SystemSet::on_exit(GameState::Start).with_system(state_cleanup_system))
+
         .add_system_set(
             SystemSet::on_update(GameState::Playing)
             .with_system(rock_spawn_system)
@@ -65,7 +76,7 @@ fn main() {
                 .with_system(collision_system),
         )
         .add_system_set(SystemSet::on_update(GameState::GameOver).with_system(wait_for_click))
-        .add_system_set(SystemSet::on_exit(GameState::GameOver).with_system(reset_game))
+        .add_system_set(SystemSet::on_exit(GameState::GameOver).with_system(reset_game).with_system(state_cleanup_system))
         .run()
 }
 
@@ -115,9 +126,29 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 }
 
-fn wait_for_click(buttons: Res<Input<MouseButton>>, mut state: ResMut<State<GameState>>) {
+fn setup_start(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn_bundle(SpriteBundle {
+        texture: asset_server.load("UI/tapLeft.png"),
+        transform: Transform::from_xyz(-200.0 + PLAYER_WIDTH / 1.5, 0.0, 1.0).with_scale(Vec3::new(0.5, 0.5, 1.0)),
+        ..default()
+    }).insert(RemoveAfterState);
+
+    commands.spawn_bundle(SpriteBundle {
+        texture: asset_server.load("UI/tapRight.png"),
+        transform: Transform::from_xyz(-200.0 - PLAYER_WIDTH / 1.5, 0.0, 1.0).with_scale(Vec3::new(0.5, 0.5, 1.0)),
+        ..default()
+    }).insert(RemoveAfterState);
+} 
+
+fn wait_for_click(mut buttons: ResMut<Input<MouseButton>>, mut state: ResMut<State<GameState>>) {
     if buttons.just_pressed(MouseButton::Left) {
-        state.set(GameState::Playing).unwrap();
+        let next_state = match state.current() {
+            GameState::GameOver => GameState::Start,
+            _ => GameState::Playing
+        };
+
+        state.set(next_state).unwrap();
+        buttons.reset(MouseButton::Left);
     }
 }
 
@@ -177,16 +208,17 @@ fn player_system(
     for (mut player, mut transform) in query.iter_mut() {
         if buttons.just_pressed(MouseButton::Left) {
             player.velocity = BUMP;
-            transform.rotation = Quat::from_rotation_z((30.0_f32).to_radians());
         }
+        
+        let angle = if player.velocity >= 0.0 {
+            (player.velocity / BUMP) * (PI / 6.0)
+        } else if player.velocity > FREE_FALL_VELOCITY {
+            (PI * 2.0) - (player.velocity / FREE_FALL_VELOCITY) * (PI / 2.0)
+        } else {
+            PI * 1.5
+        };
 
-        let (_, angle) = transform.rotation.to_axis_angle();
-        let mut new_angle = angle.to_degrees() - time.delta_seconds() * 30.0;
-        if new_angle < 0.0 {
-            new_angle += 360.0;
-        }
-
-        transform.rotation = Quat::from_rotation_z(new_angle.to_radians());
+        transform.rotation = Quat::from_rotation_z(angle);
 
         transform.translation.y += player.velocity * dt;
         player.velocity -= GRAVITY * dt;
@@ -198,10 +230,17 @@ fn reset_game(mut commands: Commands, mut rock_timer: ResMut<RockTimer>, mut pla
 
     for (mut transform, mut player) in players.iter_mut() {
         transform.translation.y = 0.0;
+        transform.rotation = Quat::IDENTITY;
         player.velocity = BUMP;
     }
 
     for rock in rocks.iter() {
         commands.entity(rock).despawn_recursive();
+    }
+}
+
+fn state_cleanup_system(mut commands: Commands, entities: Query<Entity, With<RemoveAfterState>>) {
+    for entity in entities.iter() {
+        commands.entity(entity).despawn_recursive();
     }
 }
