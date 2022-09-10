@@ -36,6 +36,11 @@ struct RemoveAfterState;
 #[derive(Component)]
 struct HorizontalVelocity(f32);
 
+pub struct Score(u64); // Clearly this needs to be u64 in case someone ever scores over 4 billion
+
+#[derive(Component)]
+struct ScoreText;
+
 const WIDTH: f32 = 800.0;
 const HEIGHT: f32 = 480.0;
 const GRAVITY: f32 = 450.0;
@@ -58,6 +63,7 @@ fn main() {
         })
         .insert_resource(GameSpeed(1.0))
         .insert_resource(RockTimer(Timer::from_seconds(0.0, false)))
+        .insert_resource(Score(0))
         .add_plugins(DefaultPlugins)
         .add_plugin(ShapePlugin)
         .add_state(GameState::Start)
@@ -65,19 +71,23 @@ fn main() {
         .add_system_set(SystemSet::on_enter(GameState::Start).with_system(setup_start))
         .add_system_set(SystemSet::on_update(GameState::Start).with_system(wait_for_click))
         .add_system_set(SystemSet::on_exit(GameState::Start).with_system(state_cleanup_system))
-
         .add_system_set(
             SystemSet::on_update(GameState::Playing)
-            .with_system(rock_spawn_system)
+                .with_system(rock_spawn_system)
                 .with_system(loop_background)
                 .with_system(horizontal_movement)
                 .with_system(player_system)
                 .with_system(rock_system)
-                .with_system(collision_system),
+                .with_system(collision_system)
         )
         .add_system_set(SystemSet::on_enter(GameState::GameOver).with_system(setup_game_over))
         .add_system_set(SystemSet::on_update(GameState::GameOver).with_system(wait_for_click))
-        .add_system_set(SystemSet::on_exit(GameState::GameOver).with_system(reset_game).with_system(state_cleanup_system))
+        .add_system_set(
+            SystemSet::on_exit(GameState::GameOver)
+                .with_system(reset_game)
+                .with_system(state_cleanup_system),
+        )
+        .add_system(score_text_system)
         .run()
 }
 
@@ -125,41 +135,79 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             velocity: BUMP,
             shape: Cuboid::new(Vector2::new(PLAYER_WIDTH / 4.0, PLAYER_HEIGHT / 4.0)),
         });
+
+    commands.spawn_bundle(
+        TextBundle::from_section(
+            "0",
+            TextStyle {
+                font: asset_server.load("Roboto-Regular.ttf"),
+                font_size: 100.0,
+                color: Color::rgb(0.9, 0.9, 0.3),
+            },
+        )
+        .with_text_alignment(TextAlignment::TOP_RIGHT)
+        .with_style(Style {
+            align_self: AlignSelf::FlexEnd,
+            position_type: PositionType::Absolute,
+            position: UiRect {
+                top: Val::Px(5.0),
+                right: Val::Px(15.0),
+                ..default()
+            },
+            ..default()
+        }),
+    ).insert(ScoreText);
 }
 
 fn setup_start(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.spawn_bundle(SpriteBundle {
-        texture: asset_server.load("UI/textGetReady.png"),
-        transform: Transform::from_xyz(0.0, 100.0, 5.0),
-        ..default()
-    }).insert(RemoveAfterState);
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("UI/textGetReady.png"),
+            transform: Transform::from_xyz(0.0, 100.0, 5.0),
+            ..default()
+        })
+        .insert(RemoveAfterState);
 
-    commands.spawn_bundle(SpriteBundle {
-        texture: asset_server.load("UI/tapLeft.png"),
-        transform: Transform::from_xyz(-200.0 + PLAYER_WIDTH / 1.5, 0.0, 1.0).with_scale(Vec3::new(0.5, 0.5, 1.0)),
-        ..default()
-    }).insert(RemoveAfterState);
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("UI/tapLeft.png"),
+            transform: Transform::from_xyz(-200.0 + PLAYER_WIDTH / 1.5, 0.0, 1.0)
+                .with_scale(Vec3::new(0.5, 0.5, 1.0)),
+            ..default()
+        })
+        .insert(RemoveAfterState);
 
-    commands.spawn_bundle(SpriteBundle {
-        texture: asset_server.load("UI/tapRight.png"),
-        transform: Transform::from_xyz(-200.0 - PLAYER_WIDTH / 1.5, 0.0, 1.0).with_scale(Vec3::new(0.5, 0.5, 1.0)),
-        ..default()
-    }).insert(RemoveAfterState);
-} 
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("UI/tapRight.png"),
+            transform: Transform::from_xyz(-200.0 - PLAYER_WIDTH / 1.5, 0.0, 1.0)
+                .with_scale(Vec3::new(0.5, 0.5, 1.0)),
+            ..default()
+        })
+        .insert(RemoveAfterState);
+}
 
 fn setup_game_over(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.spawn_bundle(SpriteBundle {
-        texture: asset_server.load("UI/textGameOver.png"),
-        transform: Transform::from_xyz(0.0, 100.0, 5.0),
-        ..default()
-    }).insert(RemoveAfterState);
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("UI/textGameOver.png"),
+            transform: Transform::from_xyz(0.0, 100.0, 5.0),
+            ..default()
+        })
+        .insert(RemoveAfterState);
+}
+
+fn score_text_system(score: Res<Score>, mut text: Query<&mut Text, With<ScoreText>>) {
+    if score.is_changed() {
+        text.single_mut().sections[0].value = score.0.to_string();
+    }
 }
 
 fn wait_for_click(mut buttons: ResMut<Input<MouseButton>>, mut state: ResMut<State<GameState>>) {
     if buttons.just_pressed(MouseButton::Left) {
         let next_state = match state.current() {
             GameState::GameOver => GameState::Start,
-            _ => GameState::Playing
+            _ => GameState::Playing,
         };
 
         state.set(next_state).unwrap();
@@ -220,38 +268,45 @@ fn player_system(
     time: Res<Time>,
 ) {
     let dt = time.delta_seconds();
-    for (mut player, mut transform) in query.iter_mut() {
-        if buttons.just_pressed(MouseButton::Left) {
-            player.velocity = BUMP;
-        }
-        
-        let angle = if player.velocity >= 0.0 {
-            (player.velocity / BUMP) * (PI / 6.0)
-        } else if player.velocity > FREE_FALL_VELOCITY {
-            (PI * 2.0) - (player.velocity / FREE_FALL_VELOCITY) * (PI / 2.0)
-        } else {
-            PI * 1.5
-        };
+    let (mut player, mut transform) = query.single_mut();
 
-        transform.rotation = Quat::from_rotation_z(angle);
-
-        transform.translation.y += player.velocity * dt;
-        player.velocity -= GRAVITY * dt;
-    }
-}
-
-fn reset_game(mut commands: Commands, mut rock_timer: ResMut<RockTimer>, mut players: Query<(&mut Transform, &mut Player)>, rocks: Query<Entity, With<Rock>>) {
-    rock_timer.0.reset();
-
-    for (mut transform, mut player) in players.iter_mut() {
-        transform.translation.y = 0.0;
-        transform.rotation = Quat::IDENTITY;
+    if buttons.just_pressed(MouseButton::Left) {
         player.velocity = BUMP;
     }
+
+    let angle = if player.velocity >= 0.0 {
+        (player.velocity / BUMP) * (PI / 6.0)
+    } else if player.velocity > FREE_FALL_VELOCITY {
+        (PI * 2.0) - (player.velocity / FREE_FALL_VELOCITY) * (PI / 2.0)
+    } else {
+        PI * 1.5
+    };
+
+    transform.rotation = Quat::from_rotation_z(angle);
+
+    transform.translation.y += player.velocity * dt;
+    player.velocity -= GRAVITY * dt;
+}
+
+fn reset_game(
+    mut commands: Commands,
+    mut rock_timer: ResMut<RockTimer>,
+    mut player_query: Query<(&mut Transform, &mut Player)>,
+    rocks: Query<Entity, With<Rock>>,
+    mut score: ResMut<Score>,
+) {
+    rock_timer.0.reset();
+
+    let (mut player_transform, mut player) = player_query.single_mut();
+    player_transform.translation.y = 0.0;
+    player_transform.rotation = Quat::IDENTITY;
+    player.velocity = BUMP;
 
     for rock in rocks.iter() {
         commands.entity(rock).despawn_recursive();
     }
+
+    score.0 = 0;
 }
 
 fn state_cleanup_system(mut commands: Commands, entities: Query<Entity, With<RemoveAfterState>>) {

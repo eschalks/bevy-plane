@@ -1,4 +1,4 @@
-use crate::{GameState, HorizontalVelocity, Player, PlayerShape, WIDTH, HEIGHT};
+use crate::{GameState, HorizontalVelocity, Player, PlayerShape, Score, HEIGHT, WIDTH};
 use bevy::ecs::system::EntityCommands;
 use bevy::prelude::*;
 use bevy::utils::Duration;
@@ -7,7 +7,7 @@ use bevy_prototype_lyon::prelude::*;
 use ncollide2d::na;
 use ncollide2d::na::{Isometry2, Point2, Vector2};
 use ncollide2d::query::{self, Proximity};
-use ncollide2d::shape::{ConvexPolygon};
+use ncollide2d::shape::ConvexPolygon;
 use rand::prelude::*;
 
 const ROCK_WIDTH: f32 = 108.0;
@@ -34,7 +34,9 @@ pub struct CollisionPolygon {
 }
 
 #[derive(Component)]
-pub struct Rock;
+pub struct Rock {
+    has_scored: bool,
+}
 
 enum BevyVec {
     V2(Vec2),
@@ -91,20 +93,20 @@ pub fn collision_system(
     rock_query: Query<(&CollisionPolygon, &Transform), With<Rock>>,
     mut state: ResMut<State<GameState>>,
 ) {
-    for (player, player_transform) in player_query.iter() {
-        let (_, player_angle) = player_transform.rotation.to_axis_angle();
+    let (player, player_transform) = player_query.single();
 
-        for (rock_polygon, rock_transform) in rock_query.iter() {
-            if is_rock_collision(
-                player_transform.translation,
-                &player.shape,
-                player_angle,
-                rock_transform,
-                rock_polygon,
-            ) {
-                state.set(GameState::GameOver).unwrap();
-                return;
-            }
+    let (_, player_angle) = player_transform.rotation.to_axis_angle();
+
+    for (rock_polygon, rock_transform) in rock_query.iter() {
+        if is_rock_collision(
+            player_transform.translation,
+            &player.shape,
+            player_angle,
+            rock_transform,
+            rock_polygon,
+        ) {
+            state.set(GameState::GameOver).unwrap();
+            return;
         }
     }
 }
@@ -135,22 +137,39 @@ fn is_rock_collision(
     }
 }
 
-pub fn rock_system(mut commands: Commands, query: Query<(&Transform, Entity), With<Rock>>) {
-    for (transform, entity) in query.iter() {
+pub fn rock_system(
+    mut commands: Commands,
+    mut query: Query<(&Transform, Entity, &mut Rock)>,
+    player_query: Query<&Transform, With<Player>>,
+    mut score: ResMut<Score>,
+) {
+    let player_x = player_query.single().translation.x;
+
+    for (transform, entity, mut rock) in query.iter_mut() {
         if transform.translation.x < ROCK_MIN_X {
             commands.entity(entity).despawn_recursive();
+        }
+
+        if !rock.has_scored && transform.translation.x < player_x {
+            score.0 += 1;
+            rock.has_scored = true;
         }
     }
 }
 
-pub fn rock_spawn_system(mut commands: Commands, mut timer: ResMut<RockTimer>, time: Res<Time>, asset_server: Res<AssetServer>) {
+pub fn rock_spawn_system(
+    mut commands: Commands,
+    mut timer: ResMut<RockTimer>,
+    time: Res<Time>,
+    asset_server: Res<AssetServer>,
+) {
     if timer.0.tick(time.delta()).finished() {
         let mut rng = thread_rng();
         let scale = rng.gen_range(0.7..1.2);
         let rock_type = rng.gen_range(0..=2);
         spawn_rocks(&mut commands, asset_server, scale, rock_type);
         let next_time: f32 = rng.gen_range(0.4..1.5);
-        timer.0.set_duration(Duration::from_secs_f32(next_time)); 
+        timer.0.set_duration(Duration::from_secs_f32(next_time));
         timer.0.reset();
     }
 }
@@ -158,33 +177,38 @@ pub fn rock_spawn_system(mut commands: Commands, mut timer: ResMut<RockTimer>, t
 fn spawn_rocks(commands: &mut Commands, asset_server: Res<AssetServer>, scale: f32, rock_type: u8) {
     let mut rock_descriptions: Vec<(f32, &str, Vec<(f32, f32)>)> = vec![];
 
-    let scale = if rock_type == 2 {
-        scale * 0.7
-    }  else {
-        scale
-    };
+    let scale = if rock_type == 2 { scale * 0.7 } else { scale };
 
     if rock_type != 0 {
-        rock_descriptions.push((HEIGHT / -2.0 + (ROCK_HEIGHT * scale) / 2.0, "rockGrass.png", ROCK_UP_POINTS.to_vec()));
+        rock_descriptions.push((
+            HEIGHT / -2.0 + (ROCK_HEIGHT * scale) / 2.0,
+            "rockGrass.png",
+            ROCK_UP_POINTS.to_vec(),
+        ));
     }
 
     if rock_type != 1 {
-        rock_descriptions.push((HEIGHT / 2.0 - (ROCK_HEIGHT * scale) / 2.0, "rockDown.png", ROCK_DOWN_POINTS.to_vec()));
+        rock_descriptions.push((
+            HEIGHT / 2.0 - (ROCK_HEIGHT * scale) / 2.0,
+            "rockDown.png",
+            ROCK_DOWN_POINTS.to_vec(),
+        ));
     }
 
     for (y, texture, points) in rock_descriptions.iter() {
         let mut entity = commands.spawn_bundle(SpriteBundle {
-            transform: Transform::from_xyz(WIDTH / 2.0 + 60.0, *y, 1.0).with_scale(Vec3::new(1.0, scale, 1.0)),
+            transform: Transform::from_xyz(WIDTH / 2.0 + 60.0, *y, 1.0)
+                .with_scale(Vec3::new(1.0, scale, 1.0)),
             texture: asset_server.load(*texture),
             ..default()
         });
-    
-    
+
         add_collision_polygon(&mut entity, points, scale);
 
-        entity.insert(HorizontalVelocity(250.0)).insert(Rock);
+        entity
+            .insert(HorizontalVelocity(250.0))
+            .insert(Rock { has_scored: false });
     }
-
 }
 
 fn add_collision_polygon(entity: &mut EntityCommands, coords: &Vec<(f32, f32)>, scale: f32) {
@@ -204,7 +228,7 @@ fn add_collision_polygon(entity: &mut EntityCommands, coords: &Vec<(f32, f32)>, 
             points: vecs,
             closed: true,
         };
-    
+
         let child = entity
             .commands()
             .spawn_bundle(GeometryBuilder::build_as(
@@ -213,7 +237,7 @@ fn add_collision_polygon(entity: &mut EntityCommands, coords: &Vec<(f32, f32)>, 
                 Transform::from_xyz(0.0, 0.0, 2.0).with_scale(Vec3::new(1.0, 1.0 / scale, 1.0)),
             ))
             .id();
-    
+
         entity.push_children(&[child]);
     }
 }
