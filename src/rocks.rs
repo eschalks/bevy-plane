@@ -1,21 +1,20 @@
 use crate::{GameState, HorizontalVelocity, Player, PlayerShape, WIDTH};
 use bevy::ecs::system::EntityCommands;
-use bevy::{prelude::*, sprite::collide_aabb::collide};
+use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use ncollide2d::na;
-use ncollide2d::na::{Isometry2, Point2, Vector1, Vector2};
-use ncollide2d::query::{self, Contact, Proximity};
-use ncollide2d::shape::{ConvexPolygon, Cuboid};
+use ncollide2d::na::{Isometry2, Point2, Vector2};
+use ncollide2d::query::{self, Proximity};
+use ncollide2d::shape::{ConvexPolygon};
 
 const ROCK_WIDTH: f32 = 108.0;
 const ROCK_HEIGHT: f32 = 239.0;
 const ROCK_MIN_X: f32 = -WIDTH / 2.0 - ROCK_WIDTH;
 
 const ROCK_UP_POINTS: &'static [(f32, f32)] = &[
-    (-52.0, -119.5),
-    (52.0, -119.5),
-    (12.0, 119.5),
-    // (-52.0, -119.5),
+    (-ROCK_WIDTH / 2.0 + 6.0, -ROCK_HEIGHT / 2.0),
+    (ROCK_WIDTH / 2.0 - 6.0, -ROCK_HEIGHT / 2.0),
+    (12.0, ROCK_HEIGHT / 2.0),
 ];
 
 #[derive(Component)]

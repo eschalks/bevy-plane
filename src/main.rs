@@ -147,10 +147,10 @@ fn spawn_background(
     }
 }
 
-fn loop_background(mut query: Query<&mut Transform, With<Background>>) {
-    for mut t in query.iter_mut() {
-        if t.translation.x < -WIDTH {
-            t.translation.x += WIDTH * 2.0;
+fn loop_background(mut query: Query<(&mut Transform, &Background)>) {
+    for (mut t, background) in query.iter_mut() {
+        if t.translation.x < -background.width {
+            t.translation.x += background.width * 2.0;
         }
     }
 }
@@ -181,7 +181,7 @@ fn player_system(
         }
 
         let (_, angle) = transform.rotation.to_axis_angle();
-        let mut new_angle = (angle.to_degrees() - time.delta_seconds() * 30.0);
+        let mut new_angle = angle.to_degrees() - time.delta_seconds() * 30.0;
         if new_angle < 0.0 {
             new_angle += 360.0;
         }
