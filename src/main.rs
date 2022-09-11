@@ -1,4 +1,5 @@
 mod rocks;
+mod text;
 
 use std::f32::consts::PI;
 
@@ -7,6 +8,7 @@ use bevy_prototype_lyon::prelude::*;
 use ncollide2d::na::Vector2;
 use ncollide2d::shape::Cuboid;
 use rocks::*;
+use text::*;
 
 pub type PlayerShape = Cuboid<f32>;
 
@@ -78,7 +80,7 @@ fn main() {
                 .with_system(horizontal_movement)
                 .with_system(player_system)
                 .with_system(rock_system)
-                .with_system(collision_system)
+                .with_system(collision_system),
         )
         .add_system_set(SystemSet::on_enter(GameState::GameOver).with_system(setup_game_over))
         .add_system_set(SystemSet::on_update(GameState::GameOver).with_system(wait_for_click))
@@ -88,6 +90,7 @@ fn main() {
                 .with_system(state_cleanup_system),
         )
         .add_system(score_text_system)
+        .add_system(bitmap_font_system)
         .run()
 }
 
@@ -136,27 +139,14 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             shape: Cuboid::new(Vector2::new(PLAYER_WIDTH / 4.0, PLAYER_HEIGHT / 4.0)),
         });
 
-    commands.spawn_bundle(
-        TextBundle::from_section(
-            "0",
-            TextStyle {
-                font: asset_server.load("Roboto-Regular.ttf"),
-                font_size: 100.0,
-                color: Color::rgb(0.9, 0.9, 0.3),
-            },
+    commands
+        .spawn_bundle(
+            BitmapTextBundle::new(WIDTH / 2.0 - 15.0, HEIGHT / 2.0 - 75.0)
+                .with_anchor(TextAnchor::Right)
         )
-        .with_text_alignment(TextAlignment::TOP_RIGHT)
-        .with_style(Style {
-            align_self: AlignSelf::FlexEnd,
-            position_type: PositionType::Absolute,
-            position: UiRect {
-                top: Val::Px(5.0),
-                right: Val::Px(15.0),
-                ..default()
-            },
-            ..default()
-        }),
-    ).insert(ScoreText);
+        .insert(ScoreText);
+
+    commands.insert_resource(create_bitmap_font(asset_server));
 }
 
 fn setup_start(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -197,10 +187,13 @@ fn setup_game_over(mut commands: Commands, asset_server: Res<AssetServer>) {
         .insert(RemoveAfterState);
 }
 
-fn score_text_system(score: Res<Score>, mut text: Query<&mut Text, With<ScoreText>>) {
-    if score.is_changed() {
-        text.single_mut().sections[0].value = score.0.to_string();
+fn score_text_system(score: Res<Score>, mut text_query: Query<&mut BitmapText, With<ScoreText>>) {
+    if !score.is_changed() {
+        return;
     }
+
+    let mut text = text_query.single_mut();
+    text.text = score.0.to_string();
 }
 
 fn wait_for_click(mut buttons: ResMut<Input<MouseButton>>, mut state: ResMut<State<GameState>>) {

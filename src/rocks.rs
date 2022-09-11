@@ -151,7 +151,12 @@ pub fn rock_system(
         }
 
         if !rock.has_scored && transform.translation.x < player_x {
-            score.0 += 1;
+
+            // If we fly inbetween two rocks it should still count as 1 point
+            if !score.is_changed() {
+                score.0 += 1;
+            }
+
             rock.has_scored = true;
         }
     }
@@ -238,6 +243,6 @@ fn add_collision_polygon(entity: &mut EntityCommands, coords: &Vec<(f32, f32)>, 
             ))
             .id();
 
-        entity.push_children(&[child]);
+        entity.add_child(child);
     }
 }
