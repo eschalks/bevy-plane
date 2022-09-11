@@ -1,4 +1,4 @@
-use crate::{GameState, HorizontalVelocity, Player, PlayerShape, Score, HEIGHT, WIDTH};
+use crate::{GameState, HorizontalVelocity, Player, PlayerShape, Score, HEIGHT, WIDTH, GameSpeed};
 use bevy::ecs::system::EntityCommands;
 use bevy::prelude::*;
 use bevy::utils::Duration;
@@ -167,13 +167,14 @@ pub fn rock_spawn_system(
     mut timer: ResMut<RockTimer>,
     time: Res<Time>,
     asset_server: Res<AssetServer>,
+    game_speed: Res<GameSpeed>,
 ) {
     if timer.0.tick(time.delta()).finished() {
         let mut rng = thread_rng();
         let scale = rng.gen_range(0.7..1.2);
         let rock_type = rng.gen_range(0..=2);
         spawn_rocks(&mut commands, asset_server, scale, rock_type);
-        let next_time: f32 = rng.gen_range(0.4..1.5);
+        let next_time: f32 = rng.gen_range(0.7..1.6) / game_speed.0;
         timer.0.set_duration(Duration::from_secs_f32(next_time));
         timer.0.reset();
     }

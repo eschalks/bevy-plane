@@ -120,7 +120,7 @@ fn spawn_letters(
                 };
 
 
-                // This is a whacky game with whacky text
+                // This is a wacky game with wacky text
                 let mut text_angle = rng.gen_range(0.0..(PI / 24.0));
                 if rng.gen_bool(0.5) {
                     text_angle = PI * 2.0 - text_angle;

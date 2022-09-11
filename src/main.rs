@@ -30,7 +30,7 @@ pub enum GameState {
     Paused,
     GameOver,
 }
-struct GameSpeed(f32);
+pub struct GameSpeed(f32);
 
 #[derive(Component)]
 struct RemoveAfterState;
@@ -45,8 +45,8 @@ struct ScoreText;
 
 const WIDTH: f32 = 800.0;
 const HEIGHT: f32 = 480.0;
-const GRAVITY: f32 = 450.0;
-const BUMP: f32 = GRAVITY * 0.65;
+const GRAVITY: f32 = 550.0;
+const BUMP: f32 = 239.0;
 const PLAYER_WIDTH: f32 = 88.0;
 const PLAYER_HEIGHT: f32 = 73.0;
 
@@ -80,7 +80,8 @@ fn main() {
                 .with_system(horizontal_movement)
                 .with_system(player_system)
                 .with_system(rock_system)
-                .with_system(collision_system),
+                .with_system(collision_system)
+                .with_system(game_speed_system),
         )
         .add_system_set(SystemSet::on_enter(GameState::GameOver).with_system(setup_game_over))
         .add_system_set(SystemSet::on_update(GameState::GameOver).with_system(wait_for_click))
@@ -264,12 +265,13 @@ fn player_system(
     mut query: Query<(&mut Player, &mut Transform)>,
     buttons: Res<Input<MouseButton>>,
     time: Res<Time>,
+    game_speed: Res<GameSpeed>
 ) {
     let dt = time.delta_seconds();
     let (mut player, mut transform) = query.single_mut();
 
-    if buttons.just_pressed(MouseButton::Left) {
-        player.velocity = BUMP;
+    if buttons.pressed(MouseButton::Left) {
+        player.velocity = BUMP + BUMP * ((1.0 - game_speed.0) * 0.6);
     }
 
     let angle = if player.velocity >= 0.0 {
@@ -283,7 +285,7 @@ fn player_system(
     transform.rotation = Quat::from_rotation_z(angle);
 
     transform.translation.y += player.velocity * dt;
-    player.velocity -= GRAVITY * dt;
+    player.velocity -= GRAVITY * dt * game_speed.0;
 }
 
 fn reset_game(
@@ -292,6 +294,7 @@ fn reset_game(
     mut player_query: Query<(&mut Transform, &mut Player)>,
     rocks: Query<Entity, With<Rock>>,
     mut score: ResMut<Score>,
+    mut game_speed: ResMut<GameSpeed>,
 ) {
     rock_timer.0.reset();
 
@@ -305,10 +308,17 @@ fn reset_game(
     }
 
     score.0 = 0;
+    game_speed.0 = 1.0;
 }
 
 fn state_cleanup_system(mut commands: Commands, entities: Query<Entity, With<RemoveAfterState>>) {
     for entity in entities.iter() {
         commands.entity(entity).despawn_recursive();
+    }
+}
+
+fn game_speed_system(mut speed: ResMut<GameSpeed>, score: Res<Score>) {
+    if score.is_changed() {
+        speed.0 += 0.035;
     }
 }
