@@ -1,7 +1,10 @@
+use std::f32::consts::PI;
+
 use bevy::ecs::system::EntityCommands;
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
 use bevy::utils::HashMap;
+use rand::{thread_rng, Rng};
 
 pub struct BitmapFont(HashMap<char, Handle<Image>>);
 
@@ -37,6 +40,11 @@ impl BitmapTextBundle {
 
     pub fn with_anchor(mut self, anchor: TextAnchor) -> Self {
         self.text.anchor = anchor;
+        self
+    }
+
+    pub fn with_text(mut self, text: String) -> Self {
+        self.text.text = text;
         self
     }
 }
@@ -93,7 +101,14 @@ fn spawn_letters(
     let mut x: f32 = 0.0;
 
     entity.with_children(|parent| {
+        let mut rng = thread_rng();
+
         for c in text_str.chars() {
+            if c == ' ' {
+                x += 16.0;
+                continue;
+            }
+
             let handle = font.0.get(&c);
             if let Some(handle) = handle {
                 let width = if let Some(image) = images.get(&handle) {
@@ -104,9 +119,16 @@ fn spawn_letters(
                     64.0
                 };
 
+
+                // This is a whacky game with whacky text
+                let mut text_angle = rng.gen_range(0.0..(PI / 24.0));
+                if rng.gen_bool(0.5) {
+                    text_angle = PI * 2.0 - text_angle;
+                }
+
                 parent.spawn_bundle(SpriteBundle {
                     texture: handle.clone(),
-                    transform: Transform::from_xyz(x, 0.0, 0.0),
+                    transform: Transform::from_xyz(x, 0.0, 0.0).with_rotation(Quat::from_rotation_z(text_angle)),
                     sprite: Sprite {
                         anchor: sprite_anchor.clone(),
                         ..default()
@@ -114,7 +136,7 @@ fn spawn_letters(
                     ..default()
                 });
 
-                x += (width + 4.0) * direction;
+                x += (width + 1.0) * direction;
             }
         }
     });

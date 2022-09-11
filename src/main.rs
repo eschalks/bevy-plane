@@ -177,7 +177,7 @@ fn setup_start(mut commands: Commands, asset_server: Res<AssetServer>) {
         .insert(RemoveAfterState);
 }
 
-fn setup_game_over(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup_game_over(mut commands: Commands, asset_server: Res<AssetServer>, score: Res<Score>) {
     commands
         .spawn_bundle(SpriteBundle {
             texture: asset_server.load("UI/textGameOver.png"),
@@ -185,6 +185,11 @@ fn setup_game_over(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         })
         .insert(RemoveAfterState);
+
+
+    commands.spawn_bundle(
+        BitmapTextBundle::new(WIDTH / -2.0 + 100.0, -100.0).with_text(format!("High Score {}", score.0)), 
+    ).insert(RemoveAfterState);
 }
 
 fn score_text_system(score: Res<Score>, mut text_query: Query<&mut BitmapText, With<ScoreText>>) {
